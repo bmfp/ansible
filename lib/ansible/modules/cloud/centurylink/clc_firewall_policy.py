@@ -59,7 +59,7 @@ options:
   enabled:
     description:
       - Whether the firewall policy is enabled or disabled
-    type: bool
+    choices: [True, False]
     default: 'yes'
 requirements:
     - python = 2.7
@@ -113,7 +113,7 @@ RETURN = '''
 firewall_policy_id:
     description: The fire wall policy id
     returned: success
-    type: string
+    type: str
     sample: fc36f1bfd47242e488a9c44346438c05
 firewall_policy:
     description: The fire wall policy information

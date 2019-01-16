@@ -22,6 +22,7 @@ __metaclass__ = type
 import os
 
 from ansible import constants as C
+from ansible import context
 from ansible.executor.task_queue_manager import TaskQueueManager
 from ansible.module_utils._text import to_native, to_text
 from ansible.playbook import Playbook
@@ -30,12 +31,9 @@ from ansible.utils.helpers import pct_to_int
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.utils.path import makedirs_safe
 from ansible.utils.ssh_functions import check_for_controlpersist
+from ansible.utils.display import Display
 
-try:
-    from __main__ import display
-except ImportError:
-    from ansible.utils.display import Display
-    display = Display()
+display = Display()
 
 
 class PlaybookExecutor:
@@ -45,19 +43,20 @@ class PlaybookExecutor:
     basis for bin/ansible-playbook operation.
     '''
 
-    def __init__(self, playbooks, inventory, variable_manager, loader, options, passwords):
+    def __init__(self, playbooks, inventory, variable_manager, loader, passwords):
         self._playbooks = playbooks
         self._inventory = inventory
         self._variable_manager = variable_manager
         self._loader = loader
-        self._options = options
         self.passwords = passwords
         self._unreachable_hosts = dict()
 
-        if options.listhosts or options.listtasks or options.listtags or options.syntax:
+        if context.CLIARGS.get('listhosts') or context.CLIARGS.get('listtasks') or \
+                context.CLIARGS.get('listtags') or context.CLIARGS.get('syntax'):
             self._tqm = None
         else:
-            self._tqm = TaskQueueManager(inventory=inventory, variable_manager=variable_manager, loader=loader, options=options, passwords=self.passwords)
+            self._tqm = TaskQueueManager(inventory=inventory, variable_manager=variable_manager,
+                                         loader=loader, passwords=self.passwords)
 
         # Note: We run this here to cache whether the default ansible ssh
         # executable supports control persist.  Sometime in the future we may
@@ -102,16 +101,13 @@ class PlaybookExecutor:
                     # clear any filters which may have been applied to the inventory
                     self._inventory.remove_restriction()
 
-                    # Create a temporary copy of the play here, so we can run post_validate
-                    # on it without the templating changes affecting the original object.
-                    # Doing this before vars_prompt to allow for using variables in prompt.
+                    # Allow variables to be used in vars_prompt fields.
                     all_vars = self._variable_manager.get_vars(play=play)
                     templar = Templar(loader=self._loader, variables=all_vars)
-                    new_play = play.copy()
-                    new_play.post_validate(templar)
+                    setattr(play, 'vars_prompt', templar.template(play.vars_prompt))
 
                     if play.vars_prompt:
-                        for var in new_play.vars_prompt:
+                        for var in play.vars_prompt:
                             vname = var['name']
                             prompt = var.get("prompt", vname)
                             default = var.get("default", None)
@@ -128,17 +124,17 @@ class PlaybookExecutor:
                                 else:  # we are either in --list-<option> or syntax check
                                     play.vars[vname] = default
 
-                        # Post validating again in case variables were entered in the prompt.
-                        all_vars = self._variable_manager.get_vars(play=play)
-                        templar = Templar(loader=self._loader, variables=all_vars)
-                        new_play.post_validate(templar)
+                    # Post validate so any play level variables are templated
+                    all_vars = self._variable_manager.get_vars(play=play)
+                    templar = Templar(loader=self._loader, variables=all_vars)
+                    play.post_validate(templar)
 
-                    if self._options.syntax:
+                    if context.CLIARGS['syntax']:
                         continue
 
                     if self._tqm is None:
                         # we are just doing a listing
-                        entry['plays'].append(new_play)
+                        entry['plays'].append(play)
 
                     else:
                         self._tqm._unreachable_hosts.update(self._unreachable_hosts)
@@ -148,9 +144,9 @@ class PlaybookExecutor:
 
                         break_play = False
                         # we are actually running plays
-                        batches = self._get_serialized_batches(new_play)
+                        batches = self._get_serialized_batches(play)
                         if len(batches) == 0:
-                            self._tqm.send_callback('v2_playbook_on_play_start', new_play)
+                            self._tqm.send_callback('v2_playbook_on_play_start', play)
                             self._tqm.send_callback('v2_playbook_on_no_hosts_matched')
                         for batch in batches:
                             # restrict the inventory to the hosts in the serialized batch
@@ -224,9 +220,16 @@ class PlaybookExecutor:
             if self._loader:
                 self._loader.cleanup_all_tmp_files()
 
-        if self._options.syntax:
+        if context.CLIARGS['syntax']:
             display.display("No issues encountered")
             return result
+
+        if context.CLIARGS['start_at_task'] and not self._tqm._start_at_done:
+            display.error(
+                "No matching task \"%s\" found."
+                " Note: --start-at-task can only follow static includes."
+                % context.CLIARGS['start_at_task']
+            )
 
         return result
 

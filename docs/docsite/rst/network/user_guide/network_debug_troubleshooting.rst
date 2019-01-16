@@ -99,6 +99,64 @@ Because the log files are verbose, you can use grep to look for specific informa
 
   grep "p=28990" $ANSIBLE_LOG_PATH
 
+
+Enabling Networking device interaction logging
+----------------------------------------------
+
+**Platforms:** Any
+
+Ansible 2.8 features added logging of device interaction in log file to help diagnose and troubleshoot
+issues regarding Ansible Networking modules. The messages are logged in file pointed by ``log_path`` configuration
+option in Ansible configuration file or by set :envvar:`ANSIBLE_LOG_PATH` as mentioned in above section.
+
+.. warning::
+  The device interaction messages consist of command executed on target device and the returned response, as this
+  log data can contain sensitive information including passwords in plain text it is disabled by default.
+  Additionally, in order to prevent accidental leakage of data, a warning will be shown on every task with this
+  setting eneabled specifying which host has it enabled and where the data is being logged.
+
+Be sure to fully understand the security implications of enabling this option. The device interaction logging can be enabled either globally by setting in configuration file or by setting environment or enabled on per task basis by passing special variable to task.
+
+Before running ``ansible-playbook`` run the following commands to enable logging::
+
+   # Specify the location for the log file
+   export ANSIBLE_LOG_PATH=~/ansible.log
+
+
+Enable device interaction logging for a given task
+
+.. code-block:: yaml
+
+  - name: get version information
+    ios_command:
+      commands:
+        - show version
+    vars:
+      ansible_persistent_log_messages: True
+
+
+To make this a global setting, add the following to your ``ansible.cfg`` file:
+
+.. code-block:: ini
+
+   [persistent_connection]
+   log_messages = True
+
+or enable environment variable `ANSIBLE_PERSISTENT_LOG_MESSAGES`
+
+   # Enable device interaction logging
+   export ANSIBLE_PERSISTENT_LOG_MESSAGES=True
+
+If the task is failing at the time on connection initialization itself it is recommended to enable this option
+globally else if an individual task is failing intermittently this option can be enabled for that task itself to
+find the root cause.
+
+After Ansible has finished running you can inspect the log file which has been created on the ansible-controller
+
+.. note:: Be sure to fully understand the security implications of enabling this option as it can log sensitive
+          information in log file thus creating security vulnerability.
+
+
 Isolating an error
 ------------------
 
@@ -254,7 +312,7 @@ For example:
 
 Suggestions to resolve:
 
-* If you are using the ``provider:`` options ensure that it's suboption ``host:`` is set correctly.
+* If you are using the ``provider:`` options ensure that its suboption ``host:`` is set correctly.
 * If you are not using ``provider:`` nor top-level arguments ensure your inventory file is correct.
 
 
@@ -418,9 +476,8 @@ For example:
 
 Suggestions to resolve:
 
-Options 1:
+Options 1 (Global command timeout setting):
 Increase value of command timeout in configuration file or by setting environment variable.
-Note: This value should be less than persistent connection idle timeout ie. connect_timeout
 
 .. code-block:: yaml
 
@@ -433,13 +490,13 @@ To make this a permanent change, add the following to your ``ansible.cfg`` file:
    [persistent_connection]
    command_timeout = 30
 
-Option 2:
+Option 2 (Per task command timeout setting):
 Increase command timeout per task basis. All network modules support a
 timeout value that can be set on a per task basis.
 The timeout value controls the amount of time in seconds before the
 task will fail if the command has not returned.
 
-For example:
+For local connection type:
 
 .. FIXME: Detail error here
 
@@ -453,12 +510,25 @@ Suggestions to resolve:
         provider: "{{ cli }}"
         timeout: 30
 
+For network_cli, netconf connection type (applicable from 2.7 onwards):
+
+.. FIXME: Detail error here
+
+Suggestions to resolve:
+
+.. code-block:: yaml
+
+    - name: save running-config
+      ios_command:
+        commands: copy running-config startup-config
+      vars:
+        ansible_command_timeout: 30
+
 Some operations take longer than the default 10 seconds to complete.  One good
 example is saving the current running config on IOS devices to startup config.
-In this case, changing the timeout value form the default 10 seconds to 30
+In this case, changing the timeout value from the default 10 seconds to 30
 seconds will prevent the task from failing before the command completes
 successfully.
-Note: This value should be less than persistent connection idle timeout ie. connect_timeout
 
 Persistent socket connect timeout:
 For example:
@@ -597,6 +667,65 @@ no additional changes necessary.  The network module will now connect to the
 network device by first connecting to the host specified in
 ``ansible_ssh_common_args``, which is ``bastion01`` in the above example.
 
+Using bastion/jump host with netconf connection
+-----------------------------------------------
+
+Enabling jump host setting
+--------------------------
+
+
+Bastion/jump host with netconf connection can be enabled by:
+ - Setting Ansible variable ``ansible_netconf_ssh_config`` either to ``True`` or custom ssh config file path
+ - Setting environment variable ``ANSIBLE_NETCONF_SSH_CONFIG`` to ``True`` or custom ssh config file path
+ - Setting ``ssh_config = 1`` or ``ssh_config = <ssh-file-path>`` under ``netconf_connection`` section
+
+If the configuration variable is set to 1 the proxycommand and other ssh variables are read from
+default ssh config file (~/.ssh/config).
+
+If the configuration variable is set to file path the proxycommand and other ssh variables are read
+from the given custom ssh file path
+
+Example ssh config file (~/.ssh/config)
+---------------------------------------
+
+.. code-block:: ini
+
+  Host jumphost
+    HostName jumphost.domain.name.com
+    User jumphost-user
+    IdentityFile "/path/to/ssh-key.pem"
+    Port 22
+
+  # Note: Due to the way that Paramiko reads the SSH Config file, 
+  # you need to specify the NETCONF port that the host uses.
+  # i.e. It does not automatically use ansible_port
+  # As a result you need either:
+  
+  Host junos01
+    HostName junos01
+    ProxyCommand ssh -W %h:22 jumphost
+    
+  # OR
+  
+  Host junos01
+    HostName junos01
+    ProxyCommand ssh -W %h:830 jumphost
+    
+  # Depending on the netconf port used.
+
+Example Ansible inventory file
+
+.. code-block:: ini
+
+    [junos]
+    junos01
+
+    [junos:vars]
+    ansible_connection=netconf
+    ansible_network_os=junos
+    ansible_user=myuser
+    ansible_ssh_pass=!vault...
+
 
 .. note:: Using ``ProxyCommand`` with passwords via variables
 
@@ -604,3 +733,38 @@ network device by first connecting to the host specified in
    This is done to prevent secrets from leaking out, for example in ``ps`` output.
 
    We recommend using SSH Keys, and if needed an ssh-agent, rather than passwords, where ever possible.
+
+Miscellaneous Issues
+====================
+
+
+Intermittent failure while using ``network_cli`` connection type
+----------------------------------------------------------------
+
+If the command prompt received in response is not matched correctly within
+the ``network_cli`` connection plugin the task might fail intermittently with truncated
+response or with the error message ``operation requires privilege escalation``.
+Starting in 2.7.1 a new buffer read timer is added to ensure prompts are matched properly
+and a complete response is send in output. The timer default value is 0.2 seconds and
+can be adjusted on a per task basis or can be set globally in seconds.
+
+Example Per task timer setting
+
+.. code-block:: yaml
+
+  - name: gather ios facts
+    ios_facts:
+      gather_subset: all
+    register: result
+    vars:
+      ansible_buffer_read_timeout: 2
+
+
+To make this a global setting, add the following to your ``ansible.cfg`` file:
+
+.. code-block:: ini
+
+   [persistent_connection]
+   buffer_read_timeout = 2
+
+This timer delay per command executed on remote host can be disabled by setting the value to zero.

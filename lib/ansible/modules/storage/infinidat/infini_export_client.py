@@ -43,7 +43,7 @@ options:
   no_root_squash:
     description:
       - Don't squash root user to anonymous. Will be set to "no" on creation if not specified explicitly.
-    choices: [ "yes", "no" ]
+    type: bool
     default: no
     required: false
   export:
@@ -104,7 +104,7 @@ def get_export(module, system):
 
     try:
         export = system.exports.get(export_path=module.params['export'])
-    except:
+    except Exception:
         module.fail_json(msg="Export with export path {} not found".format(module.params['export']))
 
     return export

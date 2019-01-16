@@ -47,7 +47,7 @@ DOCUMENTATION = '''
             key: ssl_key
       verify_certs:
         description:
-          - Toggle to decidewhether to verify the Foreman certificate.
+          - Toggle to decide whether to verify the Foreman certificate.
           - It can be set to '1' to verify SSL certificates using the installed CAs or to a path pointing to a CA bundle.
           - Set to '0' to disable certificate checking.
         env:
@@ -70,6 +70,7 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
+from ansible.module_utils._text import to_text
 from ansible.plugins.callback import CallbackBase
 
 
@@ -95,8 +96,8 @@ class CallbackModule(CallbackBase):
         super(CallbackModule, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
 
         self.FOREMAN_URL = self.get_option('url')
-        self.FOREMAN_SSL_CERT = (self.get_option['ssl_cert'], self.get_option['ssl_key'])
-        self.FOREMAN_SSL_VERIFY = str(self.get_option['verify_certs'])
+        self.FOREMAN_SSL_CERT = (self.get_option('ssl_cert'), self.get_option('ssl_key'))
+        self.FOREMAN_SSL_VERIFY = str(self.get_option('verify_certs'))
 
         self.ssl_verify = self._ssl_verify()
 
@@ -152,7 +153,7 @@ class CallbackModule(CallbackBase):
                               verify=self.ssl_verify)
             r.raise_for_status()
         except requests.exceptions.RequestException as err:
-            print(str(err))
+            print(to_text(err))
 
     def _build_log(self, data):
         logs = []
@@ -214,7 +215,7 @@ class CallbackModule(CallbackBase):
                                   verify=self.ssl_verify)
                 r.raise_for_status()
             except requests.exceptions.RequestException as err:
-                print(str(err))
+                print(to_text(err))
             self.items[host] = []
 
     def append_result(self, result):

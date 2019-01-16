@@ -49,7 +49,7 @@ options:
       - Enable/Disable SSD Cache on Pool
     required: false
     default: yes
-    choices: [ "yes", "no" ]
+    type: bool
 notes:
   - Infinibox Admin level access is required for pool modifications
 extends_documentation_fragment:
@@ -95,7 +95,7 @@ def get_pool(module, system):
     """Return Pool on None"""
     try:
         return system.pools.get(name=module.params['name'])
-    except:
+    except Exception:
         return None
 
 
@@ -185,13 +185,13 @@ def main():
     if module.params['size']:
         try:
             Capacity(module.params['size'])
-        except:
+        except Exception:
             module.fail_json(msg='size (Physical Capacity) should be defined in MB, GB, TB or PB units')
 
     if module.params['vsize']:
         try:
             Capacity(module.params['vsize'])
-        except:
+        except Exception:
             module.fail_json(msg='vsize (Virtual Capacity) should be defined in MB, GB, TB or PB units')
 
     state = module.params['state']

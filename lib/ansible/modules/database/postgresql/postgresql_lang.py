@@ -41,7 +41,6 @@ options:
       - make this language trusted for the selected db
     type: bool
     default: 'no'
-    choices: [ "yes", "no" ]
   db:
     description:
       - name of database where the language will be added, removed or changed
@@ -182,7 +181,7 @@ def lang_drop(cursor, lang, cascade):
             cursor.execute("DROP LANGUAGE \"%s\" CASCADE" % lang)
         else:
             cursor.execute("DROP LANGUAGE \"%s\"" % lang)
-    except:
+    except Exception:
         cursor.execute("ROLLBACK TO SAVEPOINT ansible_pgsql_lang_drop")
         cursor.execute("RELEASE SAVEPOINT ansible_pgsql_lang_drop")
         return False

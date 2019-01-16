@@ -87,7 +87,7 @@ options:
         folder in the playbook root directory.  If the directory does not
         exist, it is created.
     default: no
-    choices: ['yes', 'no']
+    type: bool
   config:
     description:
       - The C(config) argument allows the playbook designer to supply
@@ -100,7 +100,7 @@ options:
         config to the startup-config at the conclusion of the module
         running.  If check mode is specified, this argument is ignored.
     default: no
-    choices: ['yes', 'no']
+    type: bool
 """
 
 EXAMPLES = """
@@ -120,7 +120,7 @@ updates:
 backup_path:
   description: The full path to the backup file
   returned: when backup is yes
-  type: string
+  type: str
   sample: /playbooks/ansible/backup/onyx_config.2016-07-16@22:28:34
 """
 
@@ -159,6 +159,7 @@ def run(module, result):
     else:
         configobjs = candidate.items
 
+    total_commands = []
     if configobjs:
         commands = dumps(configobjs, 'commands').split('\n')
 
@@ -169,18 +170,15 @@ def run(module, result):
             if module.params['after']:
                 commands.extend(module.params['after'])
 
-        result['updates'] = commands
-
-        # send the configuration commands to the device and merge
-        # them with the current running config
-        if not module.check_mode:
-            load_config(module, commands)
-        result['changed'] = True
+        total_commands.extend(commands)
+        result['updates'] = total_commands
 
     if module.params['save']:
-        if not module.check_mode:
-            run_commands(module, 'configuration write')
+            total_commands.append('configuration write')
+    if total_commands:
         result['changed'] = True
+        if not module.check_mode:
+            load_config(module, total_commands)
 
 
 def main():

@@ -75,7 +75,7 @@ options:
             I(present) or I(latest).
         required: false
         default: "no"
-        choices: [ "yes", "no" ]
+        type: bool
     disable_recommends:
         version_added: "1.8"
         description:
@@ -83,21 +83,21 @@ options:
             install recommended packages.
         required: false
         default: "yes"
-        choices: [ "yes", "no" ]
+        type: bool
     force:
         version_added: "2.2"
         description:
           - Adds C(--force) option to I(zypper). Allows to downgrade packages and change vendor or architecture.
         required: false
         default: "no"
-        choices: [ "yes", "no" ]
+        type: bool
     update_cache:
         version_added: "2.2"
         description:
           - Run the equivalent of C(zypper refresh) before the operation. Disabled in check mode.
         required: false
         default: "no"
-        choices: [ "yes", "no" ]
+        type: bool
         aliases: [ "refresh" ]
     oldpackage:
         version_added: "2.2"
@@ -106,7 +106,7 @@ options:
             version is specified as part of the package name.
         required: false
         default: "no"
-        choices: [ "yes", "no" ]
+        type: bool
     extra_args:
         version_added: "2.4"
         required: false
@@ -198,6 +198,9 @@ from xml.dom.minidom import parseString as parseXML
 from ansible.module_utils.six import iteritems
 from ansible.module_utils._text import to_native
 
+# import module snippets
+from ansible.module_utils.basic import AnsibleModule
+
 
 class Package:
     def __init__(self, name, prefix, version):
@@ -237,7 +240,7 @@ def split_name_version(name):
         if version is None:
             version = ''
         return prefix, name, version
-    except:
+    except Exception:
         return prefix, name, ''
 
 
@@ -488,7 +491,7 @@ def main():
     update_cache = module.params['update_cache']
 
     # remove empty strings from package list
-    name = filter(None, name)
+    name = list(filter(None, name))
 
     # Refresh repositories
     if update_cache and not module.check_mode:
@@ -522,7 +525,6 @@ def main():
 
     module.exit_json(name=name, state=state, update_cache=update_cache, **retvals)
 
-# import module snippets
-from ansible.module_utils.basic import AnsibleModule
+
 if __name__ == "__main__":
     main()
